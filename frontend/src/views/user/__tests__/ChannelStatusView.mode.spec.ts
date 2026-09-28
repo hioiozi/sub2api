@@ -11,8 +11,8 @@ vi.mock('@/utils/featureFlags', () => ({
 vi.mock('../ChannelStatusV1View.vue', () => ({
   default: defineComponent({ name: 'ChannelStatusV1View', setup: () => () => h('div', { 'data-testid': 'v1' }) }),
 }))
-vi.mock('../ChannelStatusV2View.vue', () => ({
-  default: defineComponent({ name: 'ChannelStatusV2View', setup: () => () => h('div', { 'data-testid': 'v2' }) }),
+vi.mock('../ChannelStatusV3View.vue', () => ({
+  default: defineComponent({ name: 'ChannelStatusV3View', setup: () => () => h('div', { 'data-testid': 'v3' }) }),
 }))
 
 import ChannelStatusView from '../ChannelStatusView.vue'
@@ -22,10 +22,10 @@ describe('ChannelStatusView mode switch', () => {
     isV1.mockReset()
   })
 
-  it('renders V2 when not in v1 mode', () => {
+  it('renders V3 cards when not in v1 mode', () => {
     isV1.mockReturnValue(false)
     const wrapper = mount(ChannelStatusView)
-    expect(wrapper.find('[data-testid="v2"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="v3"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="v1"]').exists()).toBe(false)
   })
 
@@ -33,6 +33,6 @@ describe('ChannelStatusView mode switch', () => {
     isV1.mockReturnValue(true)
     const wrapper = mount(ChannelStatusView)
     expect(wrapper.find('[data-testid="v1"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="v2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="v3"]').exists()).toBe(false)
   })
 })
