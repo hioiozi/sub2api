@@ -1,0 +1,136 @@
+name: V3 Container
+
+on:
+  push:
+    branches:
+      - feature/v3-monitor-cards
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit, branch, or tag to build
+        required: false
+        type: string
+
+concurrency:
+  group: v3-container-${{ github.repository }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: make test-unit
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Frontend checks
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+  publish:
+    name: Build and publish image
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Resolve image reference
+        id: source
+        shell: bash
+        run: |
+          owner=$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${owner}/sub2api" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push amd64 image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.source.outputs.image }}:v3-${{ steps.source.outputs.short }}
+            ${{ steps.source.outputs.image }}:v3-latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+            org.opencontainers.image.version=v3-${{ steps.source.outputs.short }}
+          build-args: |
+            VERSION=v3-${{ steps.source.outputs.short }}
+            COMMIT=${{ steps.source.outputs.commit }}
+          cache-from: type=gha,scope=v3-container
+          cache-to: type=gha,mode=max,scope=v3-container
+          provenance: false
+          sbom: false
+
+      - name: Publish immutable image reference
+        shell: bash
+        run: |
+          ref='${{ steps.source.outputs.image }}@${{ steps.image.outputs.digest }}'
+          printf '%s\n' "$ref" > image-reference.txt
+          {
+            echo "### V3 image published"
+            echo
+            echo '\`'"$ref"'\`'
+            echo
+            echo "Source commit: \`${{ steps.source.outputs.commit }}\`"
+            echo
+            echo 'The VPS deployment should use the digest above, not a mutable tag.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload image reference
+        uses: actions/upload-artifact@v7
+        with:
+          name: v3-image-reference
+          path: image-reference.txt
+          retention-days: 14
