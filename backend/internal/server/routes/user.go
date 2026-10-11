@@ -29,6 +29,23 @@ func RegisterUserRoutes(
 		user := authenticated.Group("/user")
 		{
 			user.GET("/profile", h.User.GetProfile)
+			// Sakura extension: isolated per-user cover storage; reuse upstream auth/limits/audit.
+			cover := handler.NewDashboardCoverHandler("")
+			user.GET("/dashboard-cover", cover.Get)
+			user.PUT("/dashboard-cover", cover.Put)
+			user.DELETE("/dashboard-cover", cover.Delete)
+			// Sakura extension: authenticated user-managed Cloudflare allowlist.
+			access := handler.NewAccessProtectionHandler("", h.Redeem)
+			user.GET("/access-protection", access.Get)
+			user.POST("/access-protection", access.Put)
+			user.PUT("/access-protection/:id", access.Update)
+			user.DELETE("/access-protection/:id", access.Delete)
+			user.PUT("/access-protection/token", middleware.AdminOnly(), access.RotateToken)
+			// Sakura extension: shared, bounded model quality test gallery.
+			modelDetection := handler.NewModelDetectionHandler("", h.APIKey)
+			user.GET("/model-detection", modelDetection.List)
+			user.POST("/model-detection", modelDetection.Create)
+			user.DELETE("/model-detection/:id", modelDetection.Delete)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
 			user.GET("/aff", h.User.GetAffiliate)

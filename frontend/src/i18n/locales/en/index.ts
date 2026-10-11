@@ -5,6 +5,8 @@ import channelMonitorV2 from './channelMonitorV2'
 import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
+import accessProtection from './accessProtection'
+import modelDetection from './modelDetection'
 
 export default {
   ...landing,
@@ -14,4 +16,6 @@ export default {
   ...batchImage,
   admin,
   ...misc,
+  ...accessProtection,
+  ...modelDetection,
 }

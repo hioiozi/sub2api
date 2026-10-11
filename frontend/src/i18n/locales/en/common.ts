@@ -175,6 +175,8 @@ export default {
     affiliateRebateRecords: 'Rebate Records',
     affiliateTransferRecords: 'Transfer Records',
     profile: 'Profile',
+    accessProtection: 'Access protection',
+    modelDetection: 'Model detection',
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',

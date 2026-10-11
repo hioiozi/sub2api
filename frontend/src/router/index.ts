@@ -289,6 +289,30 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/access-protection',
+    name: 'AccessProtection',
+    component: () => import('@/views/user/AccessProtectionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: '访问防护',
+      titleKey: 'accessProtection.title',
+      descriptionKey: 'accessProtection.description'
+    }
+  },
+  {
+    path: '/model-detection',
+    name: 'ModelDetection',
+    component: () => import('@/views/user/ModelDetectionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: '模型检测',
+      titleKey: 'modelDetection.title',
+      descriptionKey: 'modelDetection.description'
+    }
+  },
+  {
     path: '/subscriptions',
     name: 'Subscriptions',
     component: () => import('@/views/user/SubscriptionsView.vue'),

@@ -1,0 +1,51 @@
+/* Stable class overrides also cover lazy-loaded official Select component CSS. */
+:root body .select-trigger {
+  border-color: #e3d7f4;
+  background-color: #fff;
+  color: #362d43;
+}
+:root body .select-trigger:hover { border-color: #c4a5ed; }
+:root body .select-trigger:focus,
+:root body .select-trigger.select-trigger-open {
+  border-color: #9776c8;
+  --tw-ring-color: rgb(151 118 200 / 25%);
+}
+:root body .select-trigger.select-trigger-error {
+  border-color: #ef4444;
+  --tw-ring-color: rgb(239 68 68 / 30%);
+}
+:root body .select-trigger.select-trigger-disabled { background-color: #f1eef7; }
+:root body .select-dropdown-portal {
+  border-color: #e3d7f4;
+  background-color: #fff;
+  color: #362d43;
+}
+:root .select-dropdown-portal .select-search { border-color: #e9e4f0; }
+:root .select-dropdown-portal .select-search-input { color: #362d43; }
+:root .select-dropdown-portal .select-option { color: #63566f; }
+:root .select-dropdown-portal .select-option:hover,
+:root .select-dropdown-portal .select-option-focused { background-color: #faf7fe; }
+:root .select-dropdown-portal .select-option-selected {
+  background-color: #f0eafa;
+  color: #7655aa;
+}
+:root .select-dropdown-portal .select-option-selected svg { color: #9776c8; }
+:root.dark body .select-trigger,
+:root.dark body .select-dropdown-portal {
+  background-color: #211c2b;
+  border-color: #493d59;
+  color: #f1edf8;
+}
+:root.dark body .select-trigger:focus,
+:root.dark body .select-trigger.select-trigger-open { border-color: #b498d9; }
+:root.dark body .select-trigger.select-trigger-error { border-color: #ef4444; }
+:root.dark body .select-trigger.select-trigger-disabled { background-color: #17141e; }
+:root.dark .select-dropdown-portal .select-search { border-color: #493d59; }
+:root.dark .select-dropdown-portal .select-search-input,
+:root.dark .select-dropdown-portal .select-option { color: #d7cede; }
+:root.dark .select-dropdown-portal .select-option:hover,
+:root.dark .select-dropdown-portal .select-option-focused { background-color: #362d43; }
+:root.dark .select-dropdown-portal .select-option-selected {
+  background-color: #463263;
+  color: #e3d7f4;
+}
