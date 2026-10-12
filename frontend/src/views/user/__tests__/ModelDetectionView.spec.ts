@@ -3,79 +3,64 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import ModelDetectionView from '../ModelDetectionView.vue'
 
-const api = vi.hoisted(() => ({ list: vi.fn(), records: vi.fn(), start: vi.fn() }))
-vi.mock('@/api/keys', () => ({ keysAPI: { list: api.list } }))
-vi.mock('@/api/client', () => ({ buildGatewayUrl: (path: string) => path }))
-vi.mock('@/api/modelDetection', () => ({ listDetections: api.records, startDetection: api.start, deleteDetection: vi.fn() }))
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 1, balance: 10 }, isAdmin: false }) }))
-
+const api = vi.hoisted(() => ({ config: vi.fn(), records: vi.fn(), start: vi.fn(), save: vi.fn(), admin: false }))
+vi.mock('@/api/modelDetection', () => ({ getDetectionConfig: api.config, saveDetectionPresets: api.save, listDetections: api.records, startDetection: api.start, deleteDetection: vi.fn() }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 1, balance: 10 }, isAdmin: api.admin }) }))
 let wrapper: VueWrapper
 const fetchMock = vi.fn()
-const response = (ids: string[]) => ({ ok: true, json: async () => ({ data: ids.map(id => ({ id })) }) })
-async function openModel() {
-  await wrapper.get('#model-select').trigger('click')
-  await flushPromises()
-}
-describe('model detection group and model selection', () => {
+const mountPage = () => mount(ModelDetectionView, { attachTo: document.body, global: {
+  plugins: [createI18n({ legacy: false, locale: 'zh', messages: { zh: { common: { searchPlaceholder: '搜索', selectOption: '请选择', noOptionsFound: '无结果' } } } })],
+  stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true, ModelDetectionPreview: true }
+} })
+
+describe('model detection configured catalog', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.clearAllMocks(); api.admin = false
     vi.stubGlobal('fetch', fetchMock)
-    api.list.mockResolvedValue({ total: 2, items: [1, 2].map(id => ({ id, group_id: id, group: { name: `Group ${id}` }, key: `key-${id}`, status: 'active' })) })
-    api.records.mockResolvedValue({ generated: 0, failed: 0, items: [] })
-    fetchMock.mockResolvedValue(response(['codex-auto-review', 'gpt-6-astra', 'gpt-6-sol']))
-    wrapper = mount(ModelDetectionView, { attachTo: document.body, global: {
-      plugins: [createI18n({ legacy: false, locale: 'zh', messages: { zh: { common: { searchPlaceholder: '搜索', selectOption: '请选择', noOptionsFound: '无结果' } } } })],
-      stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true }
-    } })
+    api.config.mockResolvedValue({ groups: [{ id: 1, name: 'Group 1', platform: 'openai', models: ['gpt-6-astra', 'configured-model'] }, { id: 2, name: 'Group 2', platform: 'anthropic', models: ['claude-model'] }], presets: { version: 1, pelican: '创建一个html，内容是SVG绘制鹈鹕骑自行车的2d动画。', candy: '原始糖果问题' } })
+    api.records.mockResolvedValue({ generated: 0, failed: 0, items: [], cooldowns: {} })
+    wrapper = mountPage()
   })
   afterEach(() => { wrapper.unmount(); vi.unstubAllGlobals(); document.body.innerHTML = '' })
 
-  it('opens the full list without prefiltering by the first model and submits the chosen ID', async () => {
+  it('uses configured models without fetching API keys or the gateway catalog', async () => {
     await flushPromises()
-    expect(wrapper.get('#model-select').text()).toContain('选择或输入模型 ID')
-    await openModel()
+    await wrapper.get('#model-select').trigger('click'); await flushPromises()
     const options = [...document.querySelectorAll('[role=option]')]
-    expect(options.map(el => el.textContent?.trim())).toEqual(['codex-auto-review', 'gpt-6-astra', 'gpt-6-sol'])
-    ;(options[1] as HTMLElement).click()
-    await flushPromises()
+    expect(options.map(el => el.textContent?.trim())).toEqual(['gpt-6-astra', 'configured-model'])
+    ;(options[1] as HTMLElement).click(); await flushPromises()
     api.start.mockRejectedValue(new Error('fixture: no paid request'))
     await wrapper.get('.run-button').trigger('click')
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ key_id: 1, model: 'gpt-6-astra' }))
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer key-1')
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ group_id: 1, model: 'configured-model' }))
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('先在 API 密钥页面')
   })
-
-  it('clears selection on group change and ignores a late result from the previous group', async () => {
+  it('clears the model on group changes and shows the configured platform models', async () => {
     await flushPromises()
-    let finishOld!: (value: unknown) => void
-    fetchMock.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))
-    fetchMock.mockResolvedValueOnce(response(['current-group-model']))
     const selects = wrapper.findAllComponents({ name: 'Select' })
-    selects[0].vm.$emit('update:modelValue', '2')
-    await flushPromises()
-    selects[1].vm.$emit('update:modelValue', 'stale-model')
-    selects[0].vm.$emit('update:modelValue', '1')
-    await flushPromises()
-    finishOld(response(['wrong-group-model']))
-    await flushPromises()
+    selects[1].vm.$emit('update:modelValue', 'gpt-6-astra')
+    selects[0].vm.$emit('update:modelValue', '2'); await flushPromises()
     expect(wrapper.get('#model-select').text()).toContain('选择或输入模型 ID')
-    await openModel()
-    expect(document.querySelector('[role=listbox]')?.textContent).toContain('current-group-model')
-    expect(document.querySelector('[role=listbox]')?.textContent).not.toContain('wrong-group-model')
+    await wrapper.get('#model-select').trigger('click'); await flushPromises()
+    expect(document.querySelector('[role=listbox]')?.textContent).toContain('claude-model')
+    expect(document.querySelector('[role=listbox]')?.textContent).not.toContain('gpt-6-astra')
   })
-
-  it('allows manual model ID input when discovery fails', async () => {
-    await flushPromises()
-    fetchMock.mockRejectedValueOnce(new Error('unavailable'))
-    wrapper.findAllComponents({ name: 'Select' })[0].vm.$emit('update:modelValue', '2')
-    await flushPromises()
-    expect(wrapper.text()).toContain('模型列表读取失败')
-    await openModel()
-    const input = document.querySelector('.select-search-input') as HTMLInputElement
-    input.value = 'custom-model'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await flushPromises()
-    ;(document.querySelector('[role=option]') as HTMLElement).click()
-    await flushPromises()
-    expect(wrapper.get('#model-select').text()).toContain('custom-model')
+  it('enforces the server cooldown even when no work remains', async () => {
+    wrapper.unmount()
+    api.records.mockResolvedValue({ generated: 0, failed: 1, items: [], cooldowns: { '1': new Date(Date.now() + 60000).toISOString() } })
+    wrapper = mountPage(); await flushPromises()
+    wrapper.findAllComponents({ name: 'Select' })[1].vm.$emit('update:modelValue', 'gpt-6-astra'); await flushPromises()
+    expect(wrapper.get('.run-button').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('冷却')
+    expect(api.start).not.toHaveBeenCalled()
+  })
+  it('only shows preset editing for administrators and saves the exact text', async () => {
+    await flushPromises(); expect(wrapper.find('#pelican-preset').exists()).toBe(false)
+    wrapper.unmount(); api.admin = true; wrapper = mountPage(); await flushPromises()
+    await wrapper.get('#pelican-preset').setValue('新预设，原样保留。')
+    api.save.mockResolvedValue({ version: 2, pelican: '新预设，原样保留。', candy: '原始糖果问题' })
+    await wrapper.get('.preset-editor button').trigger('click'); await flushPromises()
+    expect(api.save).toHaveBeenCalledWith({ version: 1, pelican: '新预设，原样保留。', candy: '原始糖果问题' })
+    expect(wrapper.get('.prompt-display').text()).toContain('新预设，原样保留。')
   })
 })

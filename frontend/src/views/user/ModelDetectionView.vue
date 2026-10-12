@@ -3,24 +3,26 @@
     <main class="detection-page">
       <header class="detection-heading">
         <div><span class="eyebrow">MODEL QUALITY LAB</span><h1>模型检测</h1><p>相同任务、相同提示词，对比不同上游的实际输出。</p></div>
-        <button class="run-button" type="button" :disabled="running || submitting || !selectedKeyId || !model || !prompt || !hasBalance" @click="runDetection"><Icon name="play" size="sm" />{{ running || submitting ? '检测中…' : '开始检测' }}</button>
+        <button class="run-button" type="button" :disabled="running || submitting || !selectedGroupId || !model || !prompt || !hasBalance || cooldownSeconds > 0" @click="runDetection"><Icon name="play" size="sm" />{{ running || submitting ? '检测中…' : cooldownSeconds > 0 ? `冷却 ${cooldownSeconds} 秒` : '开始检测' }}</button>
       </header>
-      <p class="detection-note">每次选择一个分组与模型，按该分组实际用量计费。使用相同提示词重复检测，比较画面、推理与回答质量。提示词与原始回答对站内用户可见，最近保留 20 条。</p>
+      <p class="detection-note">每次选择一个分组与模型，按该分组实际用量计费。使用相同提示词重复检测，比较画面、推理与回答质量。提示词与原始回答对站内用户可见，最近保留 20 条。首次检测会自动创建当前用户的分组专用密钥，之后复用；可在 API 密钥页面管理。</p>
       <section class="detection-config" aria-label="检测配置">
-        <div class="config-field"><label for="key-select">检测分组</label><Select id="key-select" v-model="selectedKeyId" :options="groupOptions" placeholder="选择检测分组" :searchable="true" :disabled="running || submitting" aria-label="检测分组" /><p v-if="!groupKeys.length" class="field-note">暂无可用分组，请先在 <a href="/keys">API 密钥页面</a>创建对应分组的检测密钥。</p></div>
-        <div class="config-field"><label for="model-select">检测模型</label><Select id="model-select" v-model="model" :options="modelOptions" :loading="modelsLoading" search-placeholder="搜索模型或输入模型 ID" :searchable="true" :creatable="true" creatable-prefix="使用模型 ID" :placeholder="modelsLoading ? '正在读取模型…' : '选择或输入模型 ID'" :disabled="running || submitting || !selectedKeyId" aria-label="检测模型" /><p class="field-note" role="status">{{ modelsLoading ? '正在读取当前分组的模型' : modelListError ? '模型列表读取失败，可搜索并输入模型 ID。' : availableModels.length ? `当前分组列出 ${availableModels.length} 个模型；如列表不全，可搜索并输入模型 ID。` : '当前分组没有列出模型，可搜索并输入模型 ID。' }}</p></div>
+        <div class="config-field"><label for="key-select">检测分组</label><Select id="key-select" v-model="selectedGroupId" :options="groupOptions" placeholder="选择检测分组" :searchable="true" :disabled="running || submitting" aria-label="检测分组" /><p v-if="!groups.length" class="field-note">暂无开放且有权限使用的分组，请联系管理员检查渠道监控配置。</p></div>
+        <div class="config-field"><label for="model-select">检测模型</label><Select id="model-select" v-model="model" :options="modelOptions" search-placeholder="搜索模型或输入模型 ID" :searchable="true" :creatable="true" creatable-prefix="使用模型 ID" placeholder="选择或输入模型 ID" :disabled="running || submitting || !selectedGroupId" aria-label="检测模型" /><p class="field-note" role="status">{{ availableModels.length ? `来自渠道监控配置的 ${availableModels.length} 个模型，实际支持情况以检测结果为准。` : '渠道监控未填写模型列表，请输入要检测的模型 ID。' }}</p></div>
         <div class="config-field"><label for="topic-select">检测主题</label><Select id="topic-select" v-model="topic" :options="topicOptions" :disabled="running || submitting" aria-label="检测主题" /></div>
         <div class="config-field balance-field"><span>我的余额</span><strong>${{ (auth.user?.balance || 0).toFixed(2) }}</strong><p>{{ hasBalance ? "检测费用从自己的余额扣除，管理员同样计费。" : "请充值后再开始检测，可先浏览已有作品。" }}</p></div>
       </section>
+      <p v-if="cooldownSeconds > 0" class="detection-note" role="status">当前分组冷却中，{{ cooldownSeconds }} 秒后可手动发起新检测。</p>
+      <details v-if="auth.isAdmin" class="preset-editor"><summary>管理员 · 预设提示词</summary><p>检测分组和模型跟随渠道监控 V2。这里只修改提示词，保存后仅影响新任务。</p><label for="pelican-preset">鹈鹕骑自行车</label><textarea id="pelican-preset" v-model="presetDraft.pelican" rows="3" maxlength="4000" /><label for="candy-preset">糖果问题</label><textarea id="candy-preset" v-model="presetDraft.candy" rows="6" maxlength="4000" /><button type="button" class="run-button" :disabled="savingPresets || !configLoaded" @click="savePresets">{{ savingPresets ? '保存中…' : '保存预设' }}</button><span role="status">{{ presetMessage }}</span></details>
       <p v-if="error" class="detection-error" role="alert">{{ error }}</p>
       <section class="detection-stats" aria-label="检测统计"><div><span>检测完成</span><strong>{{ state.generated }}</strong><small>全站累计完成检测</small></div><div><span>生成失败</span><strong>{{ state.failed }}</strong><small>全站累计失败记录</small></div><div><span>全站已保存</span><strong>{{ state.items.length }}</strong><small>最近保留的作品</small></div><div><span>记录保留上限</span><strong>20</strong><small>超出后自动清理最旧作品</small></div></section>
-      <div class="detection-toolbar"><div><strong class="gallery-title">共享作品区</strong><p class="gallery-note">展示所有分组的历史检测；作品标注的是当时请求的模型 ID，不代表当前分组可用模型。</p><div class="topic-tabs"><button v-for="option in topics" :key="option.name" type="button" :class="{ active: topic === option.name }" :disabled="running || submitting" @click="topic = option.name">{{ option.name }}</button></div></div><div class="filters"><input v-model.trim="search" aria-label="搜索模型或分组" placeholder="搜索模型或分组" /><Select v-model="filterStatus" :options="statusOptions" aria-label="筛选状态" /><button type="button" title="刷新" :disabled="loading" @click="load()"><Icon name="refresh" size="sm" /></button></div></div>
+      <div class="detection-toolbar"><div><strong class="gallery-title">共享作品区</strong><p class="gallery-note">展示所有分组的历史检测；作品标注的是当时请求的模型 ID，不代表当前分组可用模型。</p><div class="topic-tabs"><button v-for="option in topics" :key="option.name" type="button" :class="{ active: topic === option.name }" :disabled="running || submitting" @click="topic = option.name">{{ option.name }}</button></div></div><div class="filters"><input v-model.trim="search" aria-label="搜索模型或分组" placeholder="搜索模型或分组" /><Select v-model="filterStatus" :options="statusOptions" aria-label="筛选状态" /><button type="button" title="刷新" :disabled="loading" @click="load(); loadConfig()"><Icon name="refresh" size="sm" /></button></div></div>
       <div class="prompt-display"><label for="prompt-input">本次提示词 · {{ topic }}</label><textarea v-if="topic === '自定义'" id="prompt-input" v-model="prompt" :disabled="running || submitting" rows="4" maxlength="4000" placeholder="输入要比较的任务，原始回答将对站内用户可见" /><p v-else>{{ prompt }}</p></div>
       <div v-if="running" class="detection-progress" role="status">正在后台检测所选分组与模型，最长 8 分钟。可离开或刷新页面，查询进度不会重复调用模型。</div>
       <div v-if="loading" role="status">加载中…</div>
       <div v-else-if="!filteredItems.length" class="detection-empty">当前没有匹配的检测记录。</div>
       <section v-else class="detection-grid" aria-label="检测作品">
-        <article v-for="item in filteredItems" :key="item.id" class="detection-result"><header><div><small>{{ item.platform?.toUpperCase() }} · {{ item.key_name }}</small><h2>{{ item.model }}</h2><p>{{ formatDate(item.created_at) }} · {{ item.topic }}</p></div><span :class="item.status">{{ item.status === 'generated' ? '已生成' : item.status === 'running' ? '检测中' : '失败' }}</span></header><div v-if="item.status === 'generated' && item.html" class="preview"><iframe :srcdoc="sandboxDocument(item.html)" sandbox="" title="模型生成的 HTML 预览" loading="lazy" /><div class="preview-actions"><span>SVG · HTML 动画</span><button type="button" @click="preview = item">放大观看 <Icon name="externalLink" size="xs" /></button><button type="button" @click="download(item)">下载 HTML</button></div></div><div v-else-if="item.status === 'generated'" class="text-answer"><small>模型原始回答</small><pre>{{ item.text }}</pre><button type="button" @click="download(item)">下载回答</button></div><div v-else-if="item.status === 'running'" class="detection-progress">模型正在生成作品…</div><div v-else class="failure">{{ item.error || '检测未完成' }}</div><footer><div><b>主题</b><span>{{ item.topic }}</span></div><div><b>耗时</b><span>{{ (item.duration_ms / 1000).toFixed(1) }} 秒</span></div><div><b>作品</b><span>全站共享</span></div></footer><details><summary>查看生成提示词</summary><p>{{ item.prompt }}</p></details><button v-if="item.status !== 'running' && (item.user_id === auth.user?.id || auth.isAdmin)" type="button" class="delete-button" @click="remove(item)">删除记录</button></article>
+        <article v-for="item in filteredItems" :key="item.id" class="detection-result"><header><div><small>{{ item.platform?.toUpperCase() }} · {{ item.key_name }}</small><h2>{{ item.model }}</h2><p>{{ formatDate(item.created_at) }} · {{ item.topic }}</p></div><span :class="item.status">{{ item.status === 'generated' ? '已生成' : item.status === 'running' ? '检测中' : '失败' }}</span></header><div v-if="item.status === 'generated' && item.html" class="preview"><ModelDetectionPreview :html="item.html" /><div class="preview-actions"><span>SVG · HTML 动画</span><button type="button" @click="preview = item">放大观看 <Icon name="externalLink" size="xs" /></button><button type="button" @click="download(item)">下载 HTML</button></div></div><div v-else-if="item.status === 'generated'" class="text-answer"><small>模型原始回答</small><pre>{{ item.text }}</pre><button type="button" @click="download(item)">下载回答</button></div><div v-else-if="item.status === 'running'" class="detection-progress">{{ item.retry_at ? '上游临时失败，等待自动重试一次…' : `模型正在生成作品…（第 ${item.attempts || 1} 次尝试）` }}</div><div v-else class="failure">{{ item.error || '检测未完成' }}<small class="attempt-note">尝试 {{ item.attempts || 1 }} 次{{ item.cooldown_until ? ' · 已进入退避冷却' : '' }}</small></div><footer><div><b>主题</b><span>{{ item.topic }}</span></div><div><b>耗时</b><span>{{ (item.duration_ms / 1000).toFixed(1) }} 秒</span></div><div><b>作品</b><span>全站共享</span></div></footer><details><summary>查看生成提示词</summary><p>{{ item.prompt }}</p></details><button v-if="item.status !== 'running' && (item.user_id === auth.user?.id || auth.isAdmin)" type="button" class="delete-button" @click="remove(item)">删除记录</button></article>
       </section>
       <div v-if="preview" class="preview-modal" role="dialog" aria-modal="true" aria-label="放大预览" @click.self="preview = null"><div class="modal-panel"><div class="modal-heading"><strong>{{ preview.model }} · {{ preview.key_name }}</strong><button type="button" aria-label="关闭预览" @click="preview = null"><Icon name="x" size="md" /></button></div><iframe :srcdoc="sandboxDocument(preview.html)" sandbox="" title="放大预览" /></div></div>
     </main>
@@ -32,16 +34,14 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
-import { keysAPI } from '@/api/keys'
-import { buildGatewayUrl } from '@/api/client'
-import { deleteDetection, listDetections, startDetection, type DetectionRecord, type DetectionState } from '@/api/modelDetection'
+import ModelDetectionPreview from '@/components/user/ModelDetectionPreview.vue'
+import { getDetectionConfig, saveDetectionPresets, type DetectionGroup, type DetectionPresets, deleteDetection, listDetections, startDetection, type DetectionRecord, type DetectionState } from '@/api/modelDetection'
 import { sandboxDocument } from '@/utils/modelDetection'
 import { useAuthStore } from '@/stores/auth'
-import type { ApiKey } from '@/types'
 
 const auth = useAuthStore()
 const topics = [
-  { name: '鹈鹕骑自行车', prompt: '创建一个完整的单文件 HTML，内容是 SVG 绘制的鹈鹕骑自行车的海边 2D 动画。画面要有明确的角色、海岸背景和连续的骑行动作。CSS 和 SVG 必须内嵌，不引用外部资源。使用 CSS 或 SVG 原生动画，不使用 JavaScript。只输出完整 HTML。' },
+  { name: '鹈鹕骑自行车', prompt: '创建一个html，内容是SVG绘制鹈鹕骑自行车的2d动画。' },
   { name: '糖果问题', prompt: `在一个黑色的袋子里放有三种口味的糖果，每种糖果有两种不同的形状（圆形和五角星形，不同的形状靠手感可以分辨）。现已知不同口味的糖和不同形状的数量统计如下表。参赛者需要在活动前决定摸出的糖果数目，那么，最少取出多少个糖果才能保证手中同时拥有不同形状的苹果味和桃子味的糖？（同时手中有圆形苹果味匹配五角星桃子味糖果，或者有圆形桃子味匹配五角星苹果味糖果都满足要求）
 
         苹果味 桃子味 西瓜味
@@ -59,23 +59,22 @@ const customPrompt = ref('')
 const hasBalance = computed(() => (auth.user?.balance || 0) > 0)
 watch(topic, (value, previous) => {
   if (previous === '自定义') customPrompt.value = prompt.value
-  prompt.value = value === '自定义' ? customPrompt.value : topics.find(item => item.name === value)!.prompt
+  prompt.value = value === '自定义' ? customPrompt.value : value === '鹈鹕骑自行车' ? presets.value.pelican : presets.value.candy
 })
 const model = ref('')
-const keys = ref<ApiKey[]>([])
-const selectedKeyId = ref('')
-const groupKeys = computed(() => {
-  const byGroup = new Map<number, ApiKey>()
-  for (const key of keys.value) {
-    if (key.group_id && !key.ip_whitelist?.length && !key.ip_blacklist?.length && !byGroup.has(key.group_id)) byGroup.set(key.group_id, key)
-  }
-  return [...byGroup.values()]
-})
-const groupOptions = computed(() => groupKeys.value.map(key => ({ value: String(key.id), label: key.group?.name || '默认分组' })))
-const availableModels = ref<string[]>([])
+const groups = ref<DetectionGroup[]>([])
+const selectedGroupId = ref('')
+const groupOptions = computed(() => groups.value.map(group => ({ value: String(group.id), label: group.name })))
+const availableModels = computed(() => groups.value.find(group => String(group.id) === selectedGroupId.value)?.models || [])
 const modelOptions = computed(() => availableModels.value.map(name => ({ value: name, label: name })))
-const modelsLoading = ref(false)
-const modelListError = ref(false)
+const presets = ref<DetectionPresets>({ version: 1, pelican: topics[0].prompt, candy: topics[1].prompt })
+const presetDraft = ref<DetectionPresets>({ ...presets.value })
+const configLoaded = ref(false)
+const savingPresets = ref(false)
+const presetMessage = ref('')
+const now = ref(Date.now())
+let clock: ReturnType<typeof setInterval> | undefined
+const cooldownSeconds = computed(() => Math.max(0, Math.ceil(((Date.parse(state.value.cooldowns?.[selectedGroupId.value] || '') || 0) - now.value) / 1000)))
 const state = ref<DetectionState>({ generated: 0, failed: 0, items: [] })
 const search = ref('')
 const filterStatus = ref('all')
@@ -98,55 +97,43 @@ async function load(quiet = false) {
     if (!disposed && state.value.items.some(item => item.status === 'running')) poll = setTimeout(() => { if (!disposed) void load(true) }, 5000)
   }
 }
-async function loadKeys() {
+async function loadConfig() {
   try {
-    let page = 1, total = 1
-    const entries: ApiKey[] = []
-    while (entries.length < total) {
-      const result = await keysAPI.list(page++, 100, { status: 'active' })
-      entries.push(...result.items); total = result.total
-      if (!result.items.length) break
-    }
-    keys.value = entries.filter(key => key.status === 'active' && (!key.expires_at || Date.parse(key.expires_at) > Date.now()) && (!key.quota || key.quota_used < key.quota))
-    if (!selectedKeyId.value && groupKeys.value.length) selectedKeyId.value = String(groupKeys.value[0].id)
-  }
-  catch { error.value = '密钥列表加载失败。' }
+    const data = await getDetectionConfig()
+    groups.value = data.groups
+    presets.value = data.presets
+    presetDraft.value = { ...data.presets }
+    configLoaded.value = true
+    if (!groups.value.some(group => String(group.id) === selectedGroupId.value)) selectedGroupId.value = groups.value.length ? String(groups.value[0].id) : ''
+    if (topic.value !== '自定义') prompt.value = topic.value === '鹈鹕骑自行车' ? data.presets.pelican : data.presets.candy
+  } catch { error.value = '检测配置读取失败，请刷新重试。' }
 }
-watch(selectedKeyId, async (id, _, cleanup) => {
-  const controller = new AbortController()
-  let stale = false
-  const timeout = setTimeout(() => controller.abort(), 15000)
-  cleanup(() => { stale = true; clearTimeout(timeout); controller.abort() })
-  availableModels.value = []
-  model.value = ''
-  modelsLoading.value = !!id
-  modelListError.value = false
-  const key = keys.value.find((entry) => String(entry.id) === id)
-  if (!key) { clearTimeout(timeout); modelsLoading.value = false; return }
+async function savePresets() {
+  savingPresets.value = true; presetMessage.value = ''
   try {
-    const response = await fetch(buildGatewayUrl('/v1/models'), { headers: { Authorization: `Bearer ${key.key}` }, signal: controller.signal })
-    if (!response.ok) throw new Error('models')
-    const data = await response.json() as { data?: Array<{ id: string }> }
-    if (stale) return
-    availableModels.value = [...new Set((data.data || []).map((item) => item.id).filter((id): id is string => typeof id === 'string' && id.trim().length > 0))].sort()
-  } catch { if (!stale) modelListError.value = true }
-  finally { clearTimeout(timeout); if (!stale) modelsLoading.value = false }
-})
+    const saved = await saveDetectionPresets(presetDraft.value)
+    presets.value = saved; presetDraft.value = { ...saved }
+    if (topic.value !== '自定义') prompt.value = topic.value === '鹈鹕骑自行车' ? saved.pelican : saved.candy
+    presetMessage.value = '已保存，新任务使用此预设。'
+  } catch (cause: any) { presetMessage.value = cause?.response?.data?.message || '保存失败，请刷新后重试。' }
+  finally { savingPresets.value = false }
+}
+watch(selectedGroupId, () => { model.value = '' })
 async function runDetection() {
-  if (running.value || submitting.value || !model.value?.trim() || !prompt.value || !selectedKeyId.value || !hasBalance.value) return
+  if (running.value || submitting.value || !model.value?.trim() || !prompt.value || !selectedGroupId.value || !hasBalance.value || cooldownSeconds.value > 0) return
   submitting.value = true; error.value = ''
   try {
-    const item = await startDetection({ key_id: Number(selectedKeyId.value), model: model.value.trim(), topic: topic.value, prompt: prompt.value })
+    const item = await startDetection({ group_id: Number(selectedGroupId.value), model: model.value.trim(), topic: topic.value, prompt: prompt.value })
     state.value.items = [item, ...state.value.items.filter(entry => entry.id !== item.id)].slice(0, 20)
     await load(true)
-  } catch (cause: any) { error.value = cause?.response?.data?.message || cause?.message || '检测任务提交失败' }
+  } catch (cause: any) { error.value = cause?.response?.data?.message || cause?.message || '检测任务提交失败'; await load(true) }
   finally { submitting.value = false }
 }
 function formatDate(value: string) { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
 function download(item: DetectionRecord) { const url = URL.createObjectURL(new Blob([item.html ? sandboxDocument(item.html) : item.text], { type: item.html ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8' })); const link = document.createElement('a'); link.href = url; link.download = `model-detection-${item.id}.${item.html ? 'html' : 'txt'}`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }
 async function remove(item: DetectionRecord) { if (!window.confirm('删除这条检测记录？')) return; try { await deleteDetection(item.id); state.value.items = state.value.items.filter((entry) => entry.id !== item.id) } catch { error.value = '删除失败，请重试。' } }
-onMounted(() => { void load(); void loadKeys() })
-onUnmounted(() => { disposed = true; clearTimeout(poll) })
+onMounted(() => { void load(); void loadConfig(); clock = setInterval(() => { now.value = Date.now() }, 1000) })
+onUnmounted(() => { disposed = true; clearTimeout(poll); clearInterval(clock) })
 </script>
 
 <style scoped>
@@ -160,4 +147,12 @@ onUnmounted(() => { disposed = true; clearTimeout(poll) })
 .filters :deep(.select-trigger) { width: 135px; }
 .dark .config-field :deep(.select-trigger), .dark .filters :deep(.select-trigger) { background: #312a3c; color: #fff; border-color: #574d62; }
 .dark .gallery-title { color: #f3edf8; }
+.preset-editor { margin: 16px 0; padding: 18px; border: 1px solid #e3d7f4; border-radius: 16px; background: #faf7fe; }
+.preset-editor summary { cursor: pointer; font-weight: 600; color: #7655aa; }
+.preset-editor p, .preset-editor span { font-size: 12px; margin: 10px 0; }
+.preset-editor label { display: block; margin: 14px 0 7px; font-size: 13px; }
+.preset-editor textarea { display: block; width: 100%; padding: 12px; border: 1px solid #e3d7f4; border-radius: 12px; background: #fff; color: inherit; }
+.preset-editor button { margin-top: 12px; }
+.dark .preset-editor, .dark .preset-editor textarea { background: #312a3c; border-color: #574d62; }
+.attempt-note { display: block; margin-top: 12px; }
 </style>

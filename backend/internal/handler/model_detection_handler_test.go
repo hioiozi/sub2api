@@ -146,7 +146,7 @@ func TestModelDetectionFailureAndRestart(t *testing.T) {
 			h := NewModelDetectionHandler(t.TempDir(), nil)
 			h.gateway = upstream.URL
 			html, failure := h.requestGeneration(ModelDetectionRecord{Model: "test", Prompt: "test", Topic: "鹈鹕骑自行车"}, "key")
-			if html != "" || failure == "" || strings.Contains(failure, "secret") {
+			if (tc.name != "partial html" && html != "") || failure == "" || strings.Contains(failure, "secret") {
 				t.Fatal(html, failure)
 			}
 		})

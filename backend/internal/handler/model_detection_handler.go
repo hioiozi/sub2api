@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,34 +23,43 @@ const modelDetectionLimit = 20
 const modelDetectionBodyLimit = 300 << 10
 
 type ModelDetectionRecord struct {
-	ID         string    `json:"id"`
-	UserID     int64     `json:"user_id"`
-	GroupID    int64     `json:"group_id"`
-	Platform   string    `json:"platform"`
-	KeyName    string    `json:"key_name"`
-	Model      string    `json:"model"`
-	Topic      string    `json:"topic"`
-	Prompt     string    `json:"prompt"`
-	HTML       string    `json:"html"`
-	Text       string    `json:"text"`
-	Status     string    `json:"status"`
-	Error      string    `json:"error,omitempty"`
-	DurationMS int       `json:"duration_ms"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID            string     `json:"id"`
+	UserID        int64      `json:"user_id"`
+	GroupID       int64      `json:"group_id"`
+	Platform      string     `json:"platform"`
+	KeyName       string     `json:"key_name"`
+	Model         string     `json:"model"`
+	Topic         string     `json:"topic"`
+	Prompt        string     `json:"prompt"`
+	HTML          string     `json:"html"`
+	Text          string     `json:"text"`
+	Status        string     `json:"status"`
+	Error         string     `json:"error,omitempty"`
+	Attempts      int        `json:"attempts"`
+	RetryAt       *time.Time `json:"retry_at,omitempty"`
+	CooldownUntil *time.Time `json:"cooldown_until,omitempty"`
+	DurationMS    int        `json:"duration_ms"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 type modelDetectionState struct {
+	Cooldowns map[string]time.Time   `json:"cooldowns,omitempty"`
 	Generated int                    `json:"generated"`
 	Failed    int                    `json:"failed"`
 	Items     []ModelDetectionRecord `json:"items"`
 }
 
 type ModelDetectionHandler struct {
-	file    string
-	mu      sync.Mutex
-	getKey  func(context.Context, int64) (*service.APIKey, error)
-	client  *http.Client
-	gateway string
+	file            string
+	mu              sync.Mutex
+	keys            *service.APIKeyService
+	monitorConfig   func(context.Context) (*service.ChannelMonitorV2Config, error)
+	availableGroups func(context.Context, int64) ([]service.Group, error)
+	getUser         func(context.Context, int64) (*service.User, error)
+	retryDelay      time.Duration
+	getKey          func(context.Context, int64) (*service.APIKey, error)
+	client          *http.Client
+	gateway         string
 }
 
 func NewModelDetectionHandler(dir string, keys *APIKeyHandler) *ModelDetectionHandler {
@@ -121,6 +132,15 @@ func (h *ModelDetectionHandler) List(c *gin.Context) {
 	if state.Items == nil {
 		state.Items = []ModelDetectionRecord{}
 	}
+	// Do not expose other users' cooldown scope.
+	own := map[string]time.Time{}
+	prefix := fmt.Sprintf("%d:", subject.UserID)
+	for scope, until := range state.Cooldowns {
+		if strings.HasPrefix(scope, prefix) && until.After(time.Now()) {
+			own[strings.TrimPrefix(scope, prefix)] = until
+		}
+	}
+	state.Cooldowns = own
 	response.Success(c, state)
 }
 

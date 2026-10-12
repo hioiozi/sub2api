@@ -43,6 +43,9 @@ func RegisterUserRoutes(
 			user.PUT("/access-protection/token", middleware.AdminOnly(), access.RotateToken)
 			// Sakura extension: shared, bounded model quality test gallery.
 			modelDetection := handler.NewModelDetectionHandler("", h.APIKey)
+			modelDetection.Configure(h.ChannelMonitorV2, h.User)
+			user.GET("/model-detection/config", modelDetection.Config)
+			user.PUT("/model-detection/presets", middleware.AdminOnly(), modelDetection.SavePresets)
 			user.GET("/model-detection", modelDetection.List)
 			user.POST("/model-detection", modelDetection.Create)
 			user.DELETE("/model-detection/:id", modelDetection.Delete)
