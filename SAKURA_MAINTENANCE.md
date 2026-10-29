@@ -1,6 +1,6 @@
 # 樱花版维护与发布
 
-官方基线：`ac1b8f1271be0d674fa6f074403c1410f30a3a81`（0.2.18）。二开保留官方 Git 历史；官方仓库作为 `upstream`，个人发布仓库作为 `origin`。不要把生产数据库、CF Token、密钥文件或用户上传内容提交 Git。
+官方基线：`dece26153621959ccd7635814f4b2d08304e681a`（0.2.19）。二开保留官方 Git 历史；官方仓库作为 `upstream`，个人发布仓库作为 `origin`。不要把生产数据库、CF Token、密钥文件或用户上传内容提交 Git。
 
 ## 改动边界
 
@@ -9,6 +9,8 @@
 - 通用扩展自身无新增数据库迁移。运行数据使用 `/app/data/dashboard-covers`、`/app/data/access-protection`、`/app/data/model-detection`，必须持久挂载。目前只支持单应用实例，文件锁不是跨进程锁。
 
 视频工作室属于临时定制，不属于本通用分支。不得将 `internal/videostudio`、`VideoStudioView`、专用视频路由/密钥/迁移等定制补丁合入或推送本仓库。官方原生视频功能仍随官方更新。线上定制包从通用版本叠加独立补丁构建，源码、差异、镜像和回滚材料只存本地及香港受限归档；每次官方升级重新验证该补丁，不能用通用镜像直接覆盖仍需视频功能的生产站。
+
+0.2.19 追加迁移 `247_scoped_admin_api_keys.sql` 和 `248_group_image_count_billing.sql`，均为新增表/字段；图片按实际张数计费默认关闭，不自动改变现有分组计费配置。Gemini 默认目录移除 2.x，显式模型映射/白名单继续保留；按当前生产配置验证。
 
 0.2.18 追加迁移 `246_enable_gemini_image_generation_groups.sql`，将 Gemini/Antigravity 分组的图片生成权限打开。升级前核对现有分组，香港验证迁移后旧程序兼容。
 
