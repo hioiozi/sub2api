@@ -31,8 +31,12 @@ type detectionGroup struct {
 
 // Reuse upstream services without changing its settings, gateway or billing.
 func (h *ModelDetectionHandler) Configure(monitor *ChannelMonitorV2Handler, user *UserHandler) {
-	h.monitorConfig = monitor.service.GetConfig
-	h.getUser = user.userService.GetByID
+	if monitor != nil && monitor.service != nil {
+		h.monitorConfig = monitor.service.GetConfig
+	}
+	if user != nil && user.userService != nil {
+		h.getUser = user.userService.GetByID
+	}
 }
 
 func (h *ModelDetectionHandler) presets() (detectionPresets, error) {
