@@ -7,6 +7,7 @@ export interface DetectionRecord {
   platform: string
   key_name: string
   model: string
+  reasoning_effort?: string
   topic: string
   prompt: string
   html: string
@@ -32,7 +33,7 @@ export async function listDetections(): Promise<DetectionState> {
   return data
 }
 
-export async function startDetection(input: { group_id: number; model: string; topic: string; prompt: string }): Promise<DetectionRecord> {
+export async function startDetection(input: { group_id: number; model: string; topic: string; prompt: string; reasoning_effort?: string }): Promise<DetectionRecord> {
   const { data } = await apiClient.post<DetectionRecord>('/user/model-detection', input)
   return data
 }

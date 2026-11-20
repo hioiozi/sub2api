@@ -66,11 +66,12 @@ func (h *ModelDetectionHandler) Create(c *gin.Context) {
 	}
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 24<<10)
 	var input struct {
-		KeyID   int64  `json:"key_id"`
-		GroupID int64  `json:"group_id"`
-		Model   string `json:"model"`
-		Topic   string `json:"topic"`
-		Prompt  string `json:"prompt"`
+		KeyID           int64  `json:"key_id"`
+		GroupID         int64  `json:"group_id"`
+		Model           string `json:"model"`
+		Topic           string `json:"topic"`
+		Prompt          string `json:"prompt"`
+		ReasoningEffort string `json:"reasoning_effort"`
 	}
 	if c.ShouldBindJSON(&input) != nil {
 		response.Error(c, 400, "检测配置格式无效")
@@ -81,6 +82,11 @@ func (h *ModelDetectionHandler) Create(c *gin.Context) {
 	presets, presetErr := h.presets()
 	if presetErr != nil {
 		response.Error(c, 500, "读取预设提示词失败")
+		return
+	}
+	input.ReasoningEffort = strings.TrimSpace(input.ReasoningEffort)
+	if !validDetectionEffort(input.ReasoningEffort, "") {
+		response.Error(c, 400, "思考档位无效")
 		return
 	}
 	input.Model = strings.TrimSpace(input.Model)
@@ -186,12 +192,16 @@ func (h *ModelDetectionHandler) Create(c *gin.Context) {
 		response.Error(c, 400, "检测专用密钥设置了 IP 限制，请先检查")
 		return
 	}
+	if !validDetectionEffort(input.ReasoningEffort, key.Group.Platform) {
+		response.Error(c, 400, "该协议不支持此思考档位，请选择默认、关闭、低、中、高或最高")
+		return
+	}
 	var id [12]byte
 	if _, err := rand.Read(id[:]); err != nil {
 		response.Error(c, 500, "创建检测任务失败")
 		return
 	}
-	item := ModelDetectionRecord{ID: hex.EncodeToString(id[:]), UserID: subject.UserID, GroupID: *key.GroupID, KeyName: key.Group.Name, Platform: key.Group.Platform, Model: input.Model, Topic: input.Topic, Prompt: input.Prompt, Status: "running", CreatedAt: time.Now().UTC()}
+	item := ModelDetectionRecord{ID: hex.EncodeToString(id[:]), UserID: subject.UserID, GroupID: *key.GroupID, KeyName: key.Group.Name, Platform: key.Group.Platform, Model: input.Model, ReasoningEffort: input.ReasoningEffort, Topic: input.Topic, Prompt: input.Prompt, Status: "running", CreatedAt: time.Now().UTC()}
 	state.Items = append([]ModelDetectionRecord{item}, state.Items...)
 	if len(state.Items) > modelDetectionLimit {
 		for i := len(state.Items) - 1; i >= 0; i-- {
@@ -388,6 +398,9 @@ func (h *ModelDetectionHandler) requestAttempt(item ModelDetectionRecord, key st
 	if item.Platform == "anthropic" || item.Platform == "antigravity" {
 		endpoint = "/v1/messages"
 		payload = gin.H{"model": item.Model, "messages": []gin.H{{"role": "user", "content": item.Prompt}}, "max_tokens": 12000, "stream": true}
+	}
+	if err := applyDetectionEffort(payload, item.Platform, item.ReasoningEffort); err != nil {
+		return "", "思考档位无效", false, 0
 	}
 	body, _ := json.Marshal(payload)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)

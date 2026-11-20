@@ -23,23 +23,24 @@ const modelDetectionLimit = 20
 const modelDetectionBodyLimit = 300 << 10
 
 type ModelDetectionRecord struct {
-	ID            string     `json:"id"`
-	UserID        int64      `json:"user_id"`
-	GroupID       int64      `json:"group_id"`
-	Platform      string     `json:"platform"`
-	KeyName       string     `json:"key_name"`
-	Model         string     `json:"model"`
-	Topic         string     `json:"topic"`
-	Prompt        string     `json:"prompt"`
-	HTML          string     `json:"html"`
-	Text          string     `json:"text"`
-	Status        string     `json:"status"`
-	Error         string     `json:"error,omitempty"`
-	Attempts      int        `json:"attempts"`
-	RetryAt       *time.Time `json:"retry_at,omitempty"`
-	CooldownUntil *time.Time `json:"cooldown_until,omitempty"`
-	DurationMS    int        `json:"duration_ms"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID              string     `json:"id"`
+	UserID          int64      `json:"user_id"`
+	GroupID         int64      `json:"group_id"`
+	Platform        string     `json:"platform"`
+	KeyName         string     `json:"key_name"`
+	Model           string     `json:"model"`
+	ReasoningEffort string     `json:"reasoning_effort,omitempty"`
+	Topic           string     `json:"topic"`
+	Prompt          string     `json:"prompt"`
+	HTML            string     `json:"html"`
+	Text            string     `json:"text"`
+	Status          string     `json:"status"`
+	Error           string     `json:"error,omitempty"`
+	Attempts        int        `json:"attempts"`
+	RetryAt         *time.Time `json:"retry_at,omitempty"`
+	CooldownUntil   *time.Time `json:"cooldown_until,omitempty"`
+	DurationMS      int        `json:"duration_ms"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 type modelDetectionState struct {

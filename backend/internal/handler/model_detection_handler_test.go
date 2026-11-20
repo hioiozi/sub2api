@@ -45,7 +45,7 @@ func TestModelDetectionServerExecutionAndIsolation(t *testing.T) {
 		}
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body["model"] != "test-model" || body["stream"] != true {
+		if body["model"] != "test-model" || body["stream"] != true || body["reasoning"].(map[string]any)["effort"] != "high" {
 			t.Error("generation payload")
 		}
 		entered <- struct{}{}
@@ -65,7 +65,7 @@ func TestModelDetectionServerExecutionAndIsolation(t *testing.T) {
 		return &service.APIKey{UserID: owner, Key: "private-test-key", Status: "active", User: &service.User{Balance: 1}, GroupID: &groupID, Group: &service.Group{Name: "test-group", Platform: "openai"}}, nil
 	}
 	r := detectionRouter(h)
-	input := `{"key_id":1,"model":"test-model","topic":"自定义","prompt":"make SVG","html":"FORGED","status":"generated","duration_ms":999}`
+	input := `{"key_id":1,"model":"test-model","topic":"自定义","prompt":"make SVG","reasoning_effort":"high","html":"FORGED","status":"generated","duration_ms":999}`
 	if w := detectionRequest(r, "GET", "/", "", ""); w.Code != 401 {
 		t.Fatal(w.Code)
 	}
@@ -85,7 +85,7 @@ func TestModelDetectionServerExecutionAndIsolation(t *testing.T) {
 		Data ModelDetectionRecord `json:"data"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &created)
-	if created.Data.Status != "running" || created.Data.HTML != "" || created.Data.KeyName != "test-group" || created.Data.DurationMS != 0 {
+	if created.Data.ReasoningEffort != "high" || created.Data.Status != "running" || created.Data.HTML != "" || created.Data.KeyName != "test-group" || created.Data.DurationMS != 0 {
 		t.Fatal(created.Data)
 	}
 	if w := detectionRequest(r, "POST", "/", input, "1"); w.Code != 409 {

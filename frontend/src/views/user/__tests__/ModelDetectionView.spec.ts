@@ -31,7 +31,7 @@ describe('model detection configured catalog', () => {
     ;(options[1] as HTMLElement).click(); await flushPromises()
     api.start.mockRejectedValue(new Error('fixture: no paid request'))
     await wrapper.get('.run-button').trigger('click')
-    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ group_id: 1, model: 'configured-model' }))
+    expect(api.start).toHaveBeenCalledWith(expect.objectContaining({ group_id: 1, model: 'configured-model', reasoning_effort:'medium' }))
     expect(fetchMock).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('先在 API 密钥页面')
   })
@@ -63,4 +63,14 @@ describe('model detection configured catalog', () => {
     expect(api.save).toHaveBeenCalledWith({ version: 1, pelican: '新预设，原样保留。', candy: '原始糖果问题' })
     expect(wrapper.get('.prompt-display').text()).toContain('新预设，原样保留。')
   })
+  it('sends the selected effort and omits it only for model default',async()=>{
+    await flushPromises();wrapper.findAllComponents({name:'Select'})[1].vm.$emit('update:modelValue','configured-model')
+    wrapper.findAllComponents({name:'Select'})[3].vm.$emit('update:modelValue','high');await flushPromises()
+    api.start.mockRejectedValue(new Error('fixture'));await wrapper.get('.run-button').trigger('click');await flushPromises()
+    expect(api.start).toHaveBeenLastCalledWith(expect.objectContaining({reasoning_effort:'high'}))
+    wrapper.findAllComponents({name:'Select'})[3].vm.$emit('update:modelValue','');await flushPromises()
+    await wrapper.get('.run-button').trigger('click');await flushPromises()
+    expect(api.start.mock.calls.at(-1)?.[0]).not.toHaveProperty('reasoning_effort')
+  })
+
 })

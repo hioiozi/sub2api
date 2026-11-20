@@ -58,6 +58,11 @@ func TestDetectionRetryBoundAndPersistentCooldown(t *testing.T) {
 			var calls atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				n := calls.Add(1)
+				var payload map[string]any
+				json.NewDecoder(r.Body).Decode(&payload)
+				if payload["reasoning"].(map[string]any)["effort"] != "high" {
+					t.Error("effort changed across retry", payload)
+				}
 				if tc.secondSuccess && n == 2 {
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"output":[{"content":[{"text":"29"}]}]}`))
@@ -77,7 +82,7 @@ func TestDetectionRetryBoundAndPersistentCooldown(t *testing.T) {
 			h := NewModelDetectionHandler(dir, nil)
 			h.gateway = server.URL
 			h.retryDelay = time.Millisecond
-			item := ModelDetectionRecord{ID: "job", UserID: 1, GroupID: 8, Topic: "糖果问题", Status: "running"}
+			item := ModelDetectionRecord{ID: "job", ReasoningEffort: "high", UserID: 1, GroupID: 8, Topic: "糖果问题", Status: "running"}
 			if e := h.write(modelDetectionState{Items: []ModelDetectionRecord{item}}); e != nil {
 				t.Fatal(e)
 			}

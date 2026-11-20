@@ -10,8 +10,10 @@
         <div class="config-field"><label for="key-select">检测分组</label><Select id="key-select" v-model="selectedGroupId" :options="groupOptions" placeholder="选择检测分组" :searchable="true" :disabled="running || submitting" aria-label="检测分组" /><p v-if="!groups.length" class="field-note">暂无开放且有权限使用的分组，请联系管理员检查渠道监控配置。</p></div>
         <div class="config-field"><label for="model-select">检测模型</label><Select id="model-select" v-model="model" :options="modelOptions" search-placeholder="搜索模型或输入模型 ID" :searchable="true" :creatable="true" creatable-prefix="使用模型 ID" placeholder="选择或输入模型 ID" :disabled="running || submitting || !selectedGroupId" aria-label="检测模型" /><p class="field-note" role="status">{{ availableModels.length ? `来自渠道监控配置的 ${availableModels.length} 个模型，实际支持情况以检测结果为准。` : '渠道监控未填写模型列表，请输入要检测的模型 ID。' }}</p></div>
         <div class="config-field"><label for="topic-select">检测主题</label><Select id="topic-select" v-model="topic" :options="topicOptions" :disabled="running || submitting" aria-label="检测主题" /></div>
+        <div class="config-field"><label for="reasoning-select">思考档位</label><Select id="reasoning-select" v-model="reasoningEffort" :options="reasoningOptions" :disabled="running || submitting" aria-label="思考档位" /><p class="field-note">默认选中中档并随请求发送；不同模型支持范围不同。不支持时可选择模型默认。更高档位可能增加耗时和费用。</p></div>
         <div class="config-field balance-field"><span>我的余额</span><strong>${{ (auth.user?.balance || 0).toFixed(2) }}</strong><p>{{ hasBalance ? "检测费用从自己的余额扣除，管理员同样计费。" : "请充值后再开始检测，可先浏览已有作品。" }}</p></div>
       </section>
+      <details class="preset-editor"><summary>思考档位与接口说明</summary><p>检测接口：POST /api/v1/user/model-detection，使用本站登录凭据；字段包括 group_id、model、topic、prompt 和可选 reasoning_effort。默认中档；选择模型默认则省略 reasoning_effort。检测仍按分组实际用量收费。</p><p>Responses 请求使用 reasoning.effort；Messages 请求按模型能力传 thinking 与 output_config.effort，旧型号使用思考 token 预算（低 2048、中 4096、高 8192、最高 10000）。本站网关继续应用分组映射和限制。不同模型支持的档位不同，参数不支持时会显示失败，不会静默移除后重发。</p><pre>{"group_id":1,"model":"YOUR_MODEL_ID","topic":"自定义","prompt":"你的检测任务","reasoning_effort":"high"}</pre></details>
       <p v-if="cooldownSeconds > 0" class="detection-note" role="status">当前分组冷却中，{{ cooldownSeconds }} 秒后可手动发起新检测。</p>
       <details v-if="auth.isAdmin" class="preset-editor"><summary>管理员 · 预设提示词</summary><p>检测分组和模型跟随渠道监控 V2。这里只修改提示词，保存后仅影响新任务。</p><label for="pelican-preset">鹈鹕骑自行车</label><textarea id="pelican-preset" v-model="presetDraft.pelican" rows="3" maxlength="4000" /><label for="candy-preset">糖果问题</label><textarea id="candy-preset" v-model="presetDraft.candy" rows="6" maxlength="4000" /><button type="button" class="run-button" :disabled="savingPresets || !configLoaded" @click="savePresets">{{ savingPresets ? '保存中…' : '保存预设' }}</button><span role="status">{{ presetMessage }}</span></details>
       <p v-if="error" class="detection-error" role="alert">{{ error }}</p>
@@ -22,7 +24,7 @@
       <div v-if="loading" role="status">加载中…</div>
       <div v-else-if="!filteredItems.length" class="detection-empty">当前没有匹配的检测记录。</div>
       <section v-else class="detection-grid" aria-label="检测作品">
-        <article v-for="item in filteredItems" :key="item.id" class="detection-result"><header><div><small>{{ item.platform?.toUpperCase() }} · {{ item.key_name }}</small><h2>{{ item.model }}</h2><p>{{ formatDate(item.created_at) }} · {{ item.topic }}</p></div><span :class="item.status">{{ item.status === 'generated' ? '已生成' : item.status === 'running' ? '检测中' : '失败' }}</span></header><div v-if="item.status === 'generated' && item.html" class="preview"><ModelDetectionPreview :html="item.html" /><div class="preview-actions"><span>SVG · HTML 动画</span><button type="button" @click="preview = item">放大观看 <Icon name="externalLink" size="xs" /></button><button type="button" @click="download(item)">下载 HTML</button></div></div><div v-else-if="item.status === 'generated'" class="text-answer"><small>模型原始回答</small><pre>{{ item.text }}</pre><button type="button" @click="download(item)">下载回答</button></div><div v-else-if="item.status === 'running'" class="detection-progress">{{ item.retry_at ? '上游临时失败，等待自动重试一次…' : `模型正在生成作品…（第 ${item.attempts || 1} 次尝试）` }}</div><div v-else class="failure">{{ item.error || '检测未完成' }}<small class="attempt-note">尝试 {{ item.attempts || 1 }} 次{{ item.cooldown_until ? ' · 已进入退避冷却' : '' }}</small></div><footer><div><b>主题</b><span>{{ item.topic }}</span></div><div><b>耗时</b><span>{{ (item.duration_ms / 1000).toFixed(1) }} 秒</span></div><div><b>作品</b><span>全站共享</span></div></footer><details><summary>查看生成提示词</summary><p>{{ item.prompt }}</p></details><button v-if="item.status !== 'running' && (item.user_id === auth.user?.id || auth.isAdmin)" type="button" class="delete-button" @click="remove(item)">删除记录</button></article>
+        <article v-for="item in filteredItems" :key="item.id" class="detection-result"><header><div><small>{{ item.platform?.toUpperCase() }} · {{ item.key_name }}</small><h2>{{ item.model }}</h2><p>{{ formatDate(item.created_at) }} · {{ item.topic }} · 思考 {{ item.reasoning_effort || '模型默认' }}</p></div><span :class="item.status">{{ item.status === 'generated' ? '已生成' : item.status === 'running' ? '检测中' : '失败' }}</span></header><div v-if="item.status === 'generated' && item.html" class="preview"><ModelDetectionPreview :html="item.html" /><div class="preview-actions"><span>SVG · HTML 动画</span><button type="button" @click="preview = item">放大观看 <Icon name="externalLink" size="xs" /></button><button type="button" @click="download(item)">下载 HTML</button></div></div><div v-else-if="item.status === 'generated'" class="text-answer"><small>模型原始回答</small><pre>{{ item.text }}</pre><button type="button" @click="download(item)">下载回答</button></div><div v-else-if="item.status === 'running'" class="detection-progress">{{ item.retry_at ? '上游临时失败，等待自动重试一次…' : `模型正在生成作品…（第 ${item.attempts || 1} 次尝试）` }}</div><div v-else class="failure">{{ item.error || '检测未完成' }}<small class="attempt-note">尝试 {{ item.attempts || 1 }} 次{{ item.cooldown_until ? ' · 已进入退避冷却' : '' }}</small></div><footer><div><b>主题</b><span>{{ item.topic }}</span></div><div><b>耗时</b><span>{{ (item.duration_ms / 1000).toFixed(1) }} 秒</span></div><div><b>作品</b><span>全站共享</span></div></footer><details><summary>查看生成提示词</summary><p>{{ item.prompt }}</p></details><button v-if="item.status !== 'running' && (item.user_id === auth.user?.id || auth.isAdmin)" type="button" class="delete-button" @click="remove(item)">删除记录</button></article>
       </section>
       <div v-if="preview" class="preview-modal" role="dialog" aria-modal="true" aria-label="放大预览" @click.self="preview = null"><div class="modal-panel"><div class="modal-heading"><strong>{{ preview.model }} · {{ preview.key_name }}</strong><button type="button" aria-label="关闭预览" @click="preview = null"><Icon name="x" size="md" /></button></div><iframe :srcdoc="sandboxDocument(preview.html)" sandbox="" title="放大预览" /></div></div>
     </main>
@@ -60,6 +62,13 @@ const hasBalance = computed(() => (auth.user?.balance || 0) > 0)
 watch(topic, (value, previous) => {
   if (previous === '自定义') customPrompt.value = prompt.value
   prompt.value = value === '自定义' ? customPrompt.value : value === '鹈鹕骑自行车' ? presets.value.pelican : presets.value.candy
+})
+const reasoningEffort = ref('medium')
+const reasoningOptions = computed(() => {
+ const platform=groups.value.find(group=>String(group.id)===selectedGroupId.value)?.platform
+ const values=platform==='anthropic'||platform==='antigravity' ? ['','none','low','medium','high','max'] : ['','none','minimal','low','medium','high','xhigh','max']
+ const labels: Record<string,string>={'':'模型默认（不传）',none:'关闭 · none',minimal:'最低 · minimal',low:'低 · low',medium:'中 · medium',high:'高 · high',xhigh:'超高 · xhigh',max:'最高 · max'}
+ return values.map(value=>({value,label:labels[value]}))
 })
 const model = ref('')
 const groups = ref<DetectionGroup[]>([])
@@ -118,12 +127,12 @@ async function savePresets() {
   } catch (cause: any) { presetMessage.value = cause?.response?.data?.message || '保存失败，请刷新后重试。' }
   finally { savingPresets.value = false }
 }
-watch(selectedGroupId, () => { model.value = '' })
+watch(selectedGroupId, () => { model.value = ''; if (!reasoningOptions.value.some(v=>v.value===reasoningEffort.value)) reasoningEffort.value='medium' })
 async function runDetection() {
   if (running.value || submitting.value || !model.value?.trim() || !prompt.value || !selectedGroupId.value || !hasBalance.value || cooldownSeconds.value > 0) return
   submitting.value = true; error.value = ''
   try {
-    const item = await startDetection({ group_id: Number(selectedGroupId.value), model: model.value.trim(), topic: topic.value, prompt: prompt.value })
+    const item = await startDetection({ group_id: Number(selectedGroupId.value), model: model.value.trim(), topic: topic.value, prompt: prompt.value, ...(reasoningEffort.value ? {reasoning_effort:reasoningEffort.value} : {}) })
     state.value.items = [item, ...state.value.items.filter(entry => entry.id !== item.id)].slice(0, 20)
     await load(true)
   } catch (cause: any) { error.value = cause?.response?.data?.message || cause?.message || '检测任务提交失败'; await load(true) }
